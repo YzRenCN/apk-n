@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Nortbook Word</title>
+    <!-- 引入 HTML转DOCX 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif; background: #f5f6f8; overflow: hidden; }
+        body { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+
+        /* 移动端简化工具栏 */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #ffffff;
+            border-bottom: 1px solid #e0e0e0;
+            overflow-x: auto;
+            flex-shrink: 0;
+            scrollbar-width: none;
+        }
+        .toolbar::-webkit-scrollbar { display: none; }
+        .toolbar button, .toolbar select {
+            height: 36px;
+            padding: 0 12px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafbfd;
+            color: #333;
+            white-space: nowrap;
+            flex-shrink: 0;
+            outline: none;
+        }
+        .toolbar button.primary { background: #3b4cca; color: #fff; border-color: #3b4cca; }
+        .toolbar button.danger { color: #c53030; }
+
+        /* 编辑器区域 */
+        .editor-wrapper { flex: 1; overflow-y: auto; padding: 16px; background: #e8eaed; -webkit-overflow-scrolling: touch; }
+        .paper {
+            width: 100%;
+            min-height: 100%;
+            background: #ffffff;
+            border-radius: 4px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+            padding: 24px 20px;
+            outline: none;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #1a202c;
+            word-wrap: break-word;
+        }
+        .paper:empty::before { content: attr(data-placeholder); color: #c0c8d4; pointer-events: none; display: block; }
+        
+        /* 表格样式 */
+        .paper table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+        .paper table td { border: 1px solid #e0e0e0; padding: 8px; min-width: 40px; }
+        .paper img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; display: block; }
+
+        /* 底部状态 */
+        .status-bar {
+            height: 30px;
+            padding: 0 16px;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #888;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 移动端工具栏 -->
+    <div class="toolbar">
+        <button class="primary" id="saveBtn">保存文档</button>
+        <button id="boldBtn"><b>B</b></button>
+        <button id="italicBtn"><i>I</i></button>
+        <button id="underlineBtn"><u>U</u></button>
+        <select id="fontSize">
+            <option value="3">字号</option>
+            <option value="2">小</option>
+            <option value="3">标准</option>
+            <option value="5">大</option>
+            <option value="6">特大</option>
+        </select>
+        <button id="colorBtn">颜色</button>
+        <button id="imgBtn">图片</button>
+        <button class="danger" id="clearBtn">清空</button>
+    </div>
+
+    <!-- 纸张编辑区 -->
+    <div class="editor-wrapper">
+        <div class="paper" id="editor" contenteditable="true" data-placeholder="点击此处开始输入文档内容…"></div>
+    </div>
+
+    <!-- 底部状态栏 -->
+    <div class="status-bar">
+        <span id="wordCount">0 字</span>
+        <span id="saveStatus">自动保存中</span>
+    </div>
+
+    <!-- 隐藏的文件选择器 -->
+    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+
+    <script>
+        (function() {
+            var editor = document.getElementById('editor');
+            var wordCount = document.getElementById('wordCount');
+            var saveStatus = document.getElementById('saveStatus');
+            var STORAGE_KEY = 'nortbook_word_mobile_v1';
+            var saveTimer = null;
+            var savedRange = null;
+
+            // 恢复内容
+            try {
+                var saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) editor.innerHTML = saved;
+            } catch (e) {}
+
+            // 统计字数
+            function updateCount() {
+                var text = editor.innerText || '';
+                wordCount.textContent = text.replace(/\s/g, '').length + ' 字';
+            }
+
+            // 自动保存
+            function autoSave() {
+                saveStatus.textContent = '保存中…';
+                saveStatus.style.color = '#d69e2e';
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(function() {
+                    try {
+                        localStorage.setItem(STORAGE_KEY, editor.innerHTML);
+                        saveStatus.textContent = '已保存';
+                        saveStatus.style.color = '#3b4cca';
+                    } catch (e) {
+                        saveStatus.textContent = '保存失败';
+                        saveStatus.style.color = '#c53030';
+                    }
+                }, 400);
+            }
+
+            editor.addEventListener('input', function() {
+                updateCount();
+                autoSave();
+            });
+
+            // 选区保存
+            function saveSelection() {
+                var sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    try { savedRange = sel.getRangeAt(0).cloneRange(); } catch (e) {}
+                }
+            }
+            function restoreSelection() {
+                if (!savedRange) return false;
+                try {
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(savedRange);
+                    return true;
+                } catch (e) { return false; }
+            }
+
+            document.querySelectorAll('.toolbar button, .toolbar select').forEach(function(el) {
+                el.addEventListener('mousedown', saveSelection);
+                el.addEventListener('touchstart', saveSelection, { passive: true });
+            });
+
+            function exec(cmd, value) {
+                restoreSelection();
+                editor.focus();
+                document.execCommand(cmd, false, value || null);
+                autoSave();
+            }
+
+            // 基础格式
+            document.getElementById('boldBtn').addEventListener('click', function() { exec('bold'); });
+            document.getElementById('italicBtn').addEventListener('click', function() { exec('italic'); });
+            document.getElementById('underlineBtn').addEventListener('click', function() { exec('underline'); });
+
+            // 字号
+            document.getElementById('fontSize').addEventListener('change', function() {
+                exec('fontSize', this.value);
+                this.value = '3';
+            });
+
+            // 颜色
+            document.getElementById('colorBtn').addEventListener('click', function() {
+                var color = prompt('输入颜色代码（如 #ff0000）：', '#000000');
+                if (color) exec('foreColor', color);
+            });
+
+            // 插入图片
+            var imageInput = document.getElementById('imageInput');
+            document.getElementById('imgBtn').addEventListener('click', function() { imageInput.click(); });
+            imageInput.addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    exec('insertImage', ev.target.result);
+                };
+                reader.readAsDataURL(file);
+                imageInput.value = '';
+            });
+
+            // 清空
+            document.getElementById('clearBtn').addEventListener('click', function() {
+                if (!editor.innerHTML.trim()) return;
+                if (confirm('确定清空所有内容吗？')) {
+                    editor.innerHTML = '';
+                    updateCount();
+                    autoSave();
+                }
+            });
+
+            // 保存文档（导出为 HTML 格式，Word 可打开）
+            document.getElementById('saveBtn').addEventListener('click', function() {
+                var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{font-family:"Microsoft YaHei",Arial;font-size:16px;line-height:1.8;padding:40px;} table{border-collapse:collapse;width:100%;} td{border:1px solid #ccc;padding:8px;} img{max-width:100%;}</style></head><body>' + editor.innerHTML + '</body></html>';
+                var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'Nortbook_Doc_' + Date.now() + '.html';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+
+            // 关闭前保存
+            window.addEventListener('beforeunload', function() {
+                try { localStorage.setItem(STORAGE_KEY, editor.innerHTML); } catch (e) {}
+            });
+
+            updateCount();
+        })();
+    </script>
+</body>
+</html>
