@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Nortbook 演示文稿</title>
+    <!-- 引入 PptxGenJS 和 html2canvas 用于导出 PPTX -->
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif; background: #f5f6f8; overflow: hidden; }
+        body { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+
+        /* ==================== 顶部工具栏 ==================== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #ffffff;
+            border-bottom: 1px solid #e0e0e0;
+            overflow-x: auto;
+            flex-shrink: 0;
+            scrollbar-width: none;
+        }
+        .toolbar::-webkit-scrollbar { display: none; }
+        .toolbar button {
+            height: 36px;
+            padding: 0 12px;
+            font-size: 14px;
+            font-weight: 600;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            background: #fafbfd;
+            color: #333;
+            white-space: nowrap;
+            flex-shrink: 0;
+            outline: none;
+        }
+        .toolbar button.primary { background: #3b4cca; color: #fff; border-color: #3b4cca; }
+        .toolbar button.danger { color: #c53030; }
+        
+        /* ==================== 主内容 ==================== */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #e8eaed;
+        }
+
+        /* 画布区域 */
+        .canvas-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 12px;
+        }
+
+        /* 幻灯片容器（等比例缩放） */
+        .slide-container {
+            position: relative;
+            background: #fff;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+        }
+
+        /* 可编辑画布 */
+        .slide-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 960px;
+            height: 540px;
+            padding: 40px;
+            background: #fff;
+            outline: none;
+            transform-origin: top left;
+            font-family: inherit;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #1a202c;
+            word-wrap: break-word;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* 幻灯片内元素样式 */
+        .slide-canvas h1 { font-size: 40px; font-weight: 800; margin: 8px 0 16px; line-height: 1.3; }
+        .slide-canvas h2 { font-size: 32px; font-weight: 700; margin: 6px 0 12px; line-height: 1.3; }
+        .slide-canvas h3 { font-size: 24px; font-weight: 700; margin: 4px 0 8px; line-height: 1.3; }
+        .slide-canvas p { margin: 6px 0; }
+        .slide-canvas ul, .slide-canvas ol { padding-left: 28px; margin: 8px 0; }
+        .slide-canvas li { margin: 4px 0; }
+        .slide-canvas img { max-width: 100%; max-height: 400px; height: auto; border-radius: 4px; }
+
+        /* ==================== 底部幻灯片列表（缩略图） ==================== */
+        .thumbnail-bar {
+            height: 100px;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            gap: 8px;
+            overflow-x: auto;
+            flex-shrink: 0;
+            scrollbar-width: none;
+        }
+        .thumbnail-bar::-webkit-scrollbar { display: none; }
+
+        .thumb-item {
+            position: relative;
+            width: 100px;
+            height: 56px;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            background: #fff;
+            flex-shrink: 0;
+            cursor: pointer;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .thumb-item.active { border-color: #3b4cca; }
+        
+        .thumb-inner {
+            position: absolute;
+            top: 0; left: 0;
+            width: 960px; height: 540px;
+            padding: 40px;
+            transform: scale(0.104); /* 100 / 960 */
+            transform-origin: top left;
+            pointer-events: none;
+            font-size: 16px;
+            line-height: 1.8;
+            color: #1a1a1a;
+            white-space: pre-wrap;
+            overflow: hidden;
+        }
+
+        .thumb-num {
+            position: absolute;
+            bottom: 2px; right: 4px;
+            font-size: 10px;
+            background: rgba(255,255,255,0.8);
+            padding: 0 4px;
+            border-radius: 2px;
+            font-weight: bold;
+        }
+
+        /* ==================== 悬浮工具栏（选中文本框时出现） ==================== */
+        .float-toolbar {
+            position: fixed;
+            background: #1a202c;
+            border-radius: 6px;
+            display: none;
+            gap: 4px;
+            padding: 4px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .float-toolbar.show { display: flex; }
+        .float-toolbar button {
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 4px;
+        }
+        .float-toolbar button.danger { color: #ff6b6b; }
+
+        /* 幻灯片内文本框（支持缩放移动） */
+        .tb-wrap {
+            position: absolute;
+            min-width: 120px;
+            min-height: 40px;
+            border: 1px dashed rgba(59, 76, 202, 0.3);
+            padding: 8px 12px;
+            box-sizing: border-box;
+            cursor: move;
+            user-select: none;
+        }
+        .tb-wrap.selected {
+            border: 2px solid #3b4cca;
+            padding: 7px 11px;
+        }
+        .tb-inner {
+            width: 100%;
+            min-height: 22px;
+            outline: none;
+            cursor: move;
+        }
+        .tb-wrap.selected .tb-inner { cursor: text; }
+        .tb-resizer {
+            position: absolute;
+            width: 12px; height: 12px;
+            background: #3b4cca;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            bottom: -6px; right: -6px;
+            display: none;
+            touch-action: none;
+        }
+        .tb-wrap.selected .tb-resizer { display: block; }
+
+        /* ==================== 底部状态 ==================== */
+        .status-bar {
+            height: 30px;
+            padding: 0 16px;
+            background: #ffffff;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #888;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部工具栏 -->
+    <div class="toolbar">
+        <button class="primary" id="addSlideBtn">+ 新增幻灯片</button>
+        <button id="formatBtn">版式</button>
+        <button id="textBoxBtn">文本框</button>
+        <button id="imageBtn">图片</button>
+        <button id="bgColorBtn">背景色</button>
+        <button class="danger" id="deleteSlideBtn">删除本页</button>
+        <button class="primary" id="exportBtn">导出 PPTX</button>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="main-content">
+        <div class="canvas-wrapper" id="canvasWrapper">
+            <div class="slide-container" id="slideContainer">
+                <div class="slide-canvas" id="slideCanvas" contenteditable="true"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部缩略图列表 -->
+    <div class="thumbnail-bar" id="thumbnailBar"></div>
+
+    <!-- 底部状态 -->
+    <div class="status-bar">
+        <span id="statusText">第 1 页 / 共 1 页</span>
+        <span id="saveStatus">自动保存中</span>
+    </div>
+
+    <!-- 隐藏的文件选择器与颜色选择器 -->
+    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+    <input type="color" id="bgColorInput" style="display: none;">
+
+    <!-- 浮窗工具栏 -->
+    <div class="float-toolbar" id="floatToolbar">
+        <button id="tbFrontBtn">置顶</button>
+        <button id="tbDeleteBtn" class="danger">删除</button>
+    </div>
+
+    <script>
+        (function() {
+            var slideCanvas = document.getElementById('slideCanvas');
+            var slideContainer = document.getElementById('slideContainer');
+            var thumbnailBar = document.getElementById('thumbnailBar');
+            var statusText = document.getElementById('statusText');
+            var saveStatus = document.getElementById('saveStatus');
+            var floatToolbar = document.getElementById('floatToolbar');
+
+            var STORAGE_KEY = 'nortbook_ppt_mobile_v1';
+            var slides = [];
+            var currentIndex = 0;
+            var saveTimer = null;
+            var currentScale = 1;
+            var textboxCounter = 0;
+
+            // 渲染空白默认模板
+            var DEFAULT_HTML = '<h1>点击输入标题</h1><p>点击输入正文…</p>';
+
+            // 初始化尺寸缩放
+            function resizeCanvas() {
+                var wrapper = document.getElementById('canvasWrapper');
+                var rect = wrapper.getBoundingClientRect();
+                // 保持 16:9 比例，让容器适应屏幕
+                var w = rect.width - 24;
+                var h = w * 9 / 16;
+                if (h > rect.height - 24) {
+                    h = rect.height - 24;
+                    w = h * 16 / 9;
+                }
+                slideContainer.style.width = w + 'px';
+                slideContainer.style.height = h + 'px';
+                currentScale = w / 960;
+                slideCanvas.style.transform = 'scale(' + currentScale + ')';
+            }
+
+            // 加载数据
+            function loadData() {
+                try {
+                    var raw = localStorage.getItem(STORAGE_KEY);
+                    if (raw) {
+                        var data = JSON.parse(raw);
+                        slides = data.slides || [];
+                        currentIndex = data.currentIndex || 0;
+                    }
+                } catch (e) {}
+
+                if (slides.length === 0) {
+                    slides = [{
+                        html: DEFAULT_HTML,
+                        bg: '#ffffff'
+                    }];
+                    currentIndex = 0;
+                }
+            }
+
+            // 保存数据
+            function saveData() {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+                        slides: slides,
+                        currentIndex: currentIndex
+                    }));
+                } catch (e) {}
+            }
+
+            // 自动保存
+            function autoSave() {
+                saveStatus.textContent = '保存中…';
+                clearTimeout(saveTimer);
+                saveTimer = setTimeout(function() {
+                    syncCurrentSlide();
+                    saveData();
+                    updateThumbnail(currentIndex);
+                    saveStatus.textContent = '已保存';
+                    updateStatus();
+                }, 400);
+            }
+
+            // 同步画布内容到数据
+            function syncCurrentSlide() {
+                if (!slides[currentIndex]) return;
+                slides[currentIndex].html = slideCanvas.innerHTML;
+                slides[currentIndex].bg = slideCanvas.style.backgroundColor || '#ffffff';
+            }
+
+            // 渲染当前幻灯片
+            function renderCurrentSlide() {
+                var s = slides[currentIndex];
+                if (!s) return;
+                slideCanvas.innerHTML = s.html;
+                slideCanvas.style.backgroundColor = s.bg || '#ffffff';
+                bindTextBoxes();
+                updateStatus();
+            }
+
+            // 更新缩略图
+            function updateThumbnail(index) {
+                var thumb = thumbnailBar.querySelector('.thumb-item[data-index="' + index + '"]');
+                if (!thumb) return;
+                var s = slides[index];
+                var inner = thumb.querySelector('.thumb-inner');
+                if (inner && s) {
+                    inner.innerHTML = s.html;
+                    inner.style.backgroundColor = s.bg || '#ffffff';
+                }
+            }
+
+            // 渲染底部缩略图栏
+            function renderThumbnails() {
+                var html = '';
+                slides.forEach(function(s, i) {
+                    html += '<div class="thumb-item' + (i === currentIndex ? ' active' : '') + '" data-index="' + i + '">';
+                    html += '<div class="thumb-inner" style="background:' + (s.bg || '#fff') + ';">' + s.html + '</div>';
+                    html += '<div class="thumb-num">' + (i + 1) + '</div>';
+                    html += '</div>';
+                });
+                thumbnailBar.innerHTML = html;
+
+                // 绑定点击事件
+                thumbnailBar.querySelectorAll('.thumb-item').forEach(function(item) {
+                    item.addEventListener('click', function() {
+                        var idx = parseInt(this.getAttribute('data-index'), 10);
+                        switchSlide(idx);
+                    });
+                });
+                updateStatus();
+            }
+
+            // 更新底部文字状态
+            function updateStatus() {
+                statusText.textContent = '第 ' + (currentIndex + 1) + ' 页 / 共 ' + slides.length + ' 页';
+            }
+
+            // 切换幻灯片
+            function switchSlide(index) {
+                if (index === currentIndex) return;
+                syncCurrentSlide();
+                currentIndex = index;
+                
+                // 更新高亮
+                thumbnailBar.querySelectorAll('.thumb-item').forEach(function(item) {
+                    item.classList.toggle('active', parseInt(item.getAttribute('data-index'), 10) === index);
+                });
+
+                renderCurrentSlide();
+                saveData();
+            }
+
+            // 新增幻灯片
+            function addSlide() {
+                syncCurrentSlide();
+                slides.push({
+                    html: '<h1>新幻灯片</h1><p>点击输入内容…</p>',
+                    bg: '#ffffff'
+                });
+                currentIndex = slides.length - 1;
+                saveData();
+                renderThumbnails();
+                renderCurrentSlide();
+                // 滚动到最右侧
+                thumbnailBar.scrollLeft = thumbnailBar.scrollWidth;
+            }
+
+            // 删除本页
+            function deleteSlide() {
+                if (slides.length <= 1) {
+                    alert('至少需要保留一页');
+                    return;
+                }
+                if (!confirm('确定删除第 ' + (currentIndex + 1) + ' 页吗？')) return;
+
+                slides.splice(currentIndex, 1);
+                if (currentIndex >= slides.length) currentIndex = slides.length - 1;
+                saveData();
+                renderThumbnails();
+                renderCurrentSlide();
+            }
+
+            // ==================== 插入文本框 ====================
+            function insertTextBox() {
+                textboxCounter++;
+                var offset = (textboxCounter % 5) * 10;
+                
+                var wrap = document.createElement('div');
+                wrap.className = 'tb-wrap';
+                wrap.setAttribute('contenteditable', 'false');
+                wrap.style.marginLeft = offset + 'px';
+                wrap.style.width = '300px';
+
+                var inner = document.createElement('div');
+                inner.className = 'tb-inner';
+                inner.setAttribute('contenteditable', 'true');
+                inner.textContent = '双击编辑文本框…';
+
+                var resizer = document.createElement('div');
+                resizer.className = 'tb-resizer';
+
+                wrap.appendChild(inner);
+                wrap.appendChild(resizer);
+                
+                slideCanvas.appendChild(wrap);
+                bindTextBox(wrap);
+                selectTextBox(wrap);
+                autoSave();
+            }
+
+            function bindTextBoxes() {
+                slideCanvas.querySelectorAll('.tb-wrap').forEach(function(wrap) {
+                    if (!wrap.dataset.bound) {
+                        if (!wrap.querySelector('.tb-resizer')) {
+                            var r = document.createElement('div');
+                            r.className = 'tb-resizer';
+                            wrap.appendChild(r);
+                        }
+                        bindTextBox(wrap);
+                    }
+                });
+            }
+
+            function bindTextBox(wrap) {
+                wrap.dataset.bound = 'true';
+                var inner = wrap.querySelector('.tb-inner');
+                var resizer = wrap.querySelector('.tb-resizer');
+
+                // 触摸拖动
+                wrap.addEventListener('touchstart', function(e) {
+                    if (e.target === resizer) return;
+                    if (wrap.classList.contains('selected') && document.activeElement === inner) return;
+                    
+                    e.stopPropagation();
+                    selectTextBox(wrap);
+                    startDrag(e, wrap);
+                }, { passive: false });
+
+                wrap.addEventListener('mousedown', function(e) {
+                    if (e.target === resizer) return;
+                    if (wrap.classList.contains('selected') && document.activeElement === inner) return;
+                    
+                    e.stopPropagation();
+                    selectTextBox(wrap);
+                    startDrag(e, wrap);
+                });
+
+                // 双击编辑
+                wrap.addEventListener('dblclick', function(e) {
+                    if (e.target === resizer) return;
+                    e.stopPropagation();
+                    selectTextBox(wrap);
+                    inner.focus();
+                    var range = document.createRange();
+                    range.selectNodeContents(inner);
+                    var sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                });
+
+                // 缩放
+                function startResize(e) {
+                    if (e.target !== resizer) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var startX = e.touches ? e.touches[0].clientX : e.clientX;
+                    var startW = wrap.offsetWidth;
+
+                    function onMove(ev) {
+                        var p = ev.touches ? ev.touches[0] : ev;
+                        var dx = (p.clientX - startX) / currentScale;
+                        wrap.style.width = Math.max(120, startW + dx) + 'px';
+                    }
+
+                    function onUp() {
+                        document.removeEventListener('mousemove', onMove);
+                        document.removeEventListener('mouseup', onUp);
+                        document.removeEventListener('touchmove', onMove);
+                        document.removeEventListener('touchend', onUp);
+                        autoSave();
+                    }
+
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                    document.addEventListener('touchmove', onMove, { passive: false });
+                    document.addEventListener('touchend', onUp);
+                }
+
+                resizer.addEventListener('mousedown', startResize);
+                resizer.addEventListener('touchstart', startResize, { passive: false });
+
+                inner.addEventListener('input', autoSave);
+            }
+
+            function startDrag(e, wrap) {
+                var startX = e.touches ? e.touches[0].clientX : e.clientX;
+                var startML = parseInt(wrap.style.marginLeft) || 0;
+                var moved = false;
+
+                function onMove(ev) {
+                    var p = ev.touches ? ev.touches[0] : ev;
+                    var dx = (p.clientX - startX) / currentScale;
+                    if (Math.abs(dx) > 2) moved = true;
+                    wrap.style.marginLeft = Math.max(0, startML + dx) + 'px';
+                }
+
+                function onUp() {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    document.removeEventListener('touchmove', onMove);
+                    document.removeEventListener('touchend', onUp);
+                    if (moved) autoSave();
+                }
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', onUp);
+            }
+
+            // 选中文本框及浮动工具栏
+            function selectTextBox(wrap) {
+                slideCanvas.querySelectorAll('.tb-wrap.selected').forEach(function(w) {
+                    w.classList.remove('selected');
+                });
+                wrap.classList.add('selected');
+
+                var rect = wrap.getBoundingClientRect();
+                floatToolbar.style.left = (rect.left + rect.width / 2 - 50) + 'px';
+                floatToolbar.style.top = (rect.top - 40) + 'px';
+                floatToolbar.classList.add('show');
+
+                // 绑定置顶与删除
+                document.getElementById('tbFrontBtn').onclick = function(e) {
+                    e.stopPropagation();
+                    var maxZ = 0;
+                    slideCanvas.querySelectorAll('.tb-wrap').forEach(function(w) {
+                        var z = parseInt(w.style.zIndex || 1);
+                        if (z > maxZ) maxZ = z;
+                    });
+                    wrap.style.zIndex = maxZ + 1;
+                    autoSave();
+                };
+
+                document.getElementById('tbDeleteBtn').onclick = function(e) {
+                    e.stopPropagation();
+                    wrap.remove();
+                    floatToolbar.classList.remove('show');
+                    autoSave();
+                };
+            }
+
+            // 点击空白取消选中
+            slideCanvas.addEventListener('click', function(e) {
+                var wrap = e.target.closest ? e.target.closest('.tb-wrap') : null;
+                if (!wrap) {
+                    slideCanvas.querySelectorAll('.tb-wrap.selected').forEach(function(w) {
+                        w.classList.remove('selected');
+                    });
+                    floatToolbar.classList.remove('show');
+                } else {
+                    selectTextBox(wrap);
+                }
+            });
+
+            // ==================== 版式、图片、背景色 ====================
+            document.getElementById('formatBtn').addEventListener('click', function() {
+                var choice = prompt('选择版式：\n1 = 标题 + 内容\n2 = 仅标题\n3 = 空白');
+                if (!choice) return;
+                if (choice === '1') slideCanvas.innerHTML = '<h1>点击输入标题</h1><p>点击输入正文…</p>';
+                else if (choice === '2') slideCanvas.innerHTML = '<h1 style="text-align:center;margin-top:160px;">点击输入标题</h1>';
+                else slideCanvas.innerHTML = '';
+                autoSave();
+            });
+
+            var imageInput = document.getElementById('imageInput');
+            document.getElementById('imageBtn').addEventListener('click', function() { imageInput.click(); });
+            imageInput.addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    var img = document.createElement('img');
+                    img.src = ev.target.result;
+                    img.style.maxWidth = '80%';
+                    img.style.margin = '10px auto';
+                    img.style.display = 'block';
+                    slideCanvas.appendChild(img);
+                    autoSave();
+                };
+                reader.readAsDataURL(file);
+                imageInput.value = '';
+            });
+
+            var bgColorInput = document.getElementById('bgColorInput');
+            document.getElementById('bgColorBtn').addEventListener('click', function() { bgColorInput.click(); });
+            bgColorInput.addEventListener('input', function() {
+                slideCanvas.style.backgroundColor = this.value;
+                autoSave();
+            });
+
+            // ==================== 导出 PPTX ====================
+            document.getElementById('exportBtn').addEventListener('click', async function() {
+                if (typeof PptxGenJS === 'undefined' || typeof html2canvas === 'undefined') {
+                    alert('导出组件未加载，请检查网络');
+                    return;
+                }
+                syncCurrentSlide();
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = '生成中…';
+
+                try {
+                    var pptx = new PptxGenJS();
+                    pptx.layout = 'LAYOUT_16x9';
+
+                    for (var i = 0; i < slides.length; i++) {
+                        var s = slides[i];
+                        var temp = document.createElement('div');
+                        temp.style.cssText = 'position:fixed;left:-9999px;top:0;width:960px;height:540px;background:' + (s.bg || '#fff') + ';padding:40px;font-family:"Segoe UI","Microsoft YaHei",Arial,sans-serif;font-size:16px;line-height:1.8;color:#1a202c;box-sizing:border-box;overflow:hidden;';
+                        temp.innerHTML = s.html;
+                        document.body.appendChild(temp);
+
+                        var canvasImg = await html2canvas(temp, { scale: 2, backgroundColor: s.bg || '#fff', useCORS: true, logging: false });
+                        document.body.removeChild(temp);
+                        
+                        var imgData = canvasImg.toDataURL('image/png');
+                        var slide = pptx.addSlide();
+                        slide.background = { color: (s.bg || '#fff').replace('#', '') };
+                        slide.addImage({ data: imgData, x: 0, y: 0, w: 10, h: 5.625 });
+                    }
+
+                    await pptx.writeFile({ fileName: 'Nortbook_PPT_' + Date.now() + '.pptx' });
+                } catch (err) {
+                    alert('导出失败：' + err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '导出 PPTX';
+                }
+            });
+
+            // ==================== 初始化 ====================
+            loadData();
+            renderThumbnails();
+            renderCurrentSlide();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            slideCanvas.addEventListener('input', autoSave);
+
+            // 关闭前保存
+            window.addEventListener('beforeunload', function() {
+                syncCurrentSlide();
+                saveData();
+            });
+
+            saveStatus.textContent = '就绪';
+        })();
+    </script>
+</body>
+</html>
